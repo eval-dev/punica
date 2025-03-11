@@ -47,14 +47,14 @@ __global__ void sgmv_shrink(T* y, T* x, T** w, IdType* s, float* tmp,
   const uint32_t s_start = s[problem_id], s_end = s[problem_id + 1];
   const uint32_t num_steps = (s_start < s_end) ? (s_end - s_start + (num_warps * 16 - 1)) / (num_warps * 16) : 0;
   for (uint32_t i = 0; i < num_steps; ++i) {
-    // init y_frag
+    // init y_frag, set y to 0 when shrinking to allow reuse of the same temp buffer across all layers.
     if (bx == 0) {
       if constexpr (num_blocks_n == 1) {
         uint32_t row_idx = s_start + (i * num_warps + ty) * 16 + tx / 2;
         T* y_ptr = y + row_idx * d_out + (tx % 2) * cell_capacity<T>();
         auto offset =
             smem_t::get_permuted_offset<num_cells_n>(ty * 16 + tx / 2, tx % 2);
-        y_smem.load_128b_async<fill_mode>(offset, y_ptr, row_idx < s_end);
+        y_smem.load_128b_async<fill_mode>(offset, y_ptr, false);
       } else {
         uint32_t row_idx = s_start + (i * num_warps + ty) * 16 + tx / 4;
         T* y_ptr = y + row_idx * d_out + (tx % 4) * cell_capacity<T>();
@@ -64,7 +64,7 @@ __global__ void sgmv_shrink(T* y, T* x, T** w, IdType* s, float* tmp,
         for (uint32_t j = 0; j < 2; ++j) {
 #pragma unroll
           for (uint32_t fno = 0; fno < num_blocks_n / 2; ++fno) {
-            y_smem.load_128b_async<fill_mode>(offset, y_ptr, row_idx < s_end);
+            y_smem.load_128b_async<fill_mode>(offset, y_ptr, false);
             y_ptr += 4 * cell_capacity<T>();
             offset += 8;
           }
